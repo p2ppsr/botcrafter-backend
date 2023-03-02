@@ -1,5 +1,8 @@
 const crypto = require('crypto')
 const { Configuration, OpenAIApi } = require("openai")
+const Ninja = require('utxoninja')
+const { getPaymentAddress } = require('sendover')
+const bsv = require('babbage-bsv')
 
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY,
@@ -13,29 +16,43 @@ class StorageEngine {
     this.conversations = []
     this.messages = []
     this.marketplace = []
+    this.transactions = []
   }
 
   createUser ({
     identityKey,
     name
   }) {
-    this.users.push({ identityKey, name })
+    if (!name || name.length < 2) {
+      throw new Error('Enter your name to register!')
+    }
+    this.users.push({ identityKey, name, balance: 0 })
   }
 
   doesUserExist ({ identityKey }) {
     return this.users.some(x => x.identityKey === identityKey)
   }
 
+  getOwnProfile ({ identityKey }) {
+    if (!this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
+    return this.users.find(x => x.identityKey === identityKey)
+  }
+
   createBot ({
-    creatorIdentityKey,
+    identityKey,
     name,
     motto,
     trainingMessages
   }) {
+    if (!this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
     const id = crypto.randomBytes(12).toString('hex')
     this.bots.push({
-      creatorIdentityKey,
-      ownerIdentityKey: creatorIdentityKey,
+      creatorIdentityKey: identityKey,
+      ownerIdentityKey: identityKey,
       name,
       motto,
       trainingMessages,
@@ -45,15 +62,24 @@ class StorageEngine {
   }
 
   listOwnBots ({ identityKey }) {
+    if (!this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
     return this.bots.filter(x => x.ownerIdentityKey === identityKey)
   }
 
   doesUserOwnBot ({ identityKey, botID }) {
+    if (!this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
     return this.bots
       .some(x => x.ownerIdentityKey === identityKey && x.id === botID)
   }
 
   createConversation ({ identityKey, botID, title }) {
+    if (!this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
     if (!this.doesUserOwnBot({ identityKey, botID })) {
       throw new Error('You do not appear to own this bot!')
     }
@@ -68,6 +94,9 @@ class StorageEngine {
   }
 
   listConversationsWithBot ({ identityKey, botID }) {
+    if (!this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
     if (!this.doesUserOwnBot({ identityKey, botID })) {
       throw new Error('You do not appear to own this bot!')
     }
@@ -81,6 +110,9 @@ class StorageEngine {
   }
 
   listConversationMessages ({ identityKey, botID, conversationID }) {
+    if (!this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
     if (!this.doesUserOwnBot({ identityKey, botID })) {
       throw new Error('You do not appear to own this bot!')
     }
@@ -97,6 +129,9 @@ class StorageEngine {
   }
 
   async sendMessage ({ identityKey, botID, conversationID, message }) {
+    if (!this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
     if (!this.doesUserOwnBot({ identityKey, botID })) {
       throw new Error('You do not appear to own this bot!')
     }
@@ -135,6 +170,141 @@ class StorageEngine {
       conversationID
     })
     return botResponse
+  }
+
+  isBotOnMarketplace ({ botID }) {
+    return this.marketplace.some(x => x.botID === botID)
+  }
+
+  listBotOnMarketplace ({ identityKey, botID, amount }) {
+    if (!this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
+    if (!this.doesUserOwnBot({ identityKey, botID })) {
+      throw new Error('You do not appear to own this bot!')
+    }
+    if (this.isBotOnMarketplace({ botID })) {
+      throw new Error('This bot is already on the marketplace!')
+    }
+    this.marketplace.push({
+      botID,
+      amount,
+      seller: identityKey
+    })
+    return true
+  }
+
+  listMarketplaceBots () {
+    return this.marketplace.map(x => {
+      const { name: sellerName } = this.users
+        .find(y => y.identityKey === x.seller)
+      return {
+        ...x,
+        ...this.findBotById({ id: x.botID }),
+        sellerName,
+        trainingMessages: undefined
+      }
+    })
+  }
+
+  getPriceForBot ({ botID }) {
+    const marketplaceEntry = this.marketplace
+      .find(x => x.botID === botID)
+    return marketplaceEntry.amount
+  }
+
+  buyBotFromMarketplace ({ identityKey, botID, paymentAmount }) {
+    if (!this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
+    const marketplaceEntry = this.marketplace.find(x => x.botID === botID)
+    this.users = this.users.map(x => {
+      if (x.identityKey === marketplaceEntry.seller) {
+        x.balance = parseInt(x.balance + (paymentAmount * 0.85))
+      }
+      return x
+    })
+    this.bots = this.bots.map(x => {
+      if (x.botID === botID) {
+        x.ownerIdentityKey = identityKey
+      }
+      return x
+    })
+    this.marketplace
+      .splice(this.marketplace.findIndex(x => x.botID === botID), 1)
+    return botID
+  }
+
+  getBalance ({ identityKey }) {
+    if (!this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
+    const { balance } = this.users.find(x => x.identityKey === identityKey)
+    return balance
+  }
+
+  async cashOut ({ identityKey }) {
+    if (!this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
+    const user = this.users.find(x => x.identityKey === identityKey)
+    if (user.balance < 1000) {
+      throw new Error(
+        `Your balance is ${user.balance} but the minimum for cashing out is 1000 satoshis.`
+      )
+    }
+    // Create a derivation prefix and suffix to derive the public key
+      const derivationPrefix = require('crypto')
+        .randomBytes(10)
+        .toString('base64')
+      const derivationSuffix = require('crypto')
+        .randomBytes(10)
+        .toString('base64')
+      // Derive the public key used for creating the output script
+      const derivedPublicKey = getPaymentAddress({
+        senderPrivateKey: process.env.SERVER_PRIVATE_KEY,
+        recipientPublicKey: identityKey,
+        invoiceNumber: `2-3241645161d8-${derivationPrefix} ${derivationSuffix}`,
+        returnType: 'publicKey'
+      })
+
+      // Create an output script that can only be unlocked with the corresponding derived private key
+      const script = new bsv.Script(
+        bsv.Script.fromAddress(bsv.Address.fromPublicKey(
+          bsv.PublicKey.fromString(derivedPublicKey)
+        ))
+      ).toHex()
+      // Create a new output to spend
+      const outputs = [{
+        script,
+        satoshis: user.balance
+      }]
+      // Create a new transaction with Ninja which pays the output
+      const ninja = new Ninja({
+        privateKey: process.env.SERVER_PRIVATE_KEY,
+        config: {
+          dojoURL: process.env.DOJO_URL
+        }
+      })
+      const transaction = await ninja.getTransactionWithOutputs({
+        outputs,
+        note: 'Sent cash-out payment to seller.'
+      })
+    const payment = {
+        transaction,
+        derivationPrefix,
+        derivationSuffix,
+        amount: user.balance,
+        senderIdentityKey: bsv.PrivateKey.fromHex(process.env.SERVER_PRIVATE_KEY).publicKey.toString()
+    }
+    this.transactions.push(payment)
+    this.users = this.users.map(x => {
+      if (x.identityKey === identityKey) {
+        x.balance = 0
+      }
+      return x
+    })
+    return payment
   }
 }
 

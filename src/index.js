@@ -1,7 +1,10 @@
 const express = require('express')
 const bodyparser = require('body-parser')
 require('dotenv').config()
+const http = require('http')
 const StorageEngine = require('./StorageEngine')
+const authrite = require('authrite-express')
+const PacketPay = require('@packetpay/express')
 
 const PORT = process.env.HTTP_PORT || process.env.PORT || 4444
 
@@ -21,7 +24,27 @@ app.use((req, res, next) => {
   }
 })
 
+app.use(authrite.middleware({
+  serverPrivateKey: process.env.SERVER_PRIVATE_KEY,
+  baseUrl: process.env.HOSTING_DOMAIN
+}))
+
 const engine = new StorageEngine()
+
+app.use(PacketPay({
+  calculateRequestPrice: req => {
+    if (req.originalUrl === '/createBot') {
+      return 1000
+    } else if (req.originalUrl === '/buyBotFromMarketplace') {
+      return engine.getPriceForBot({ botID: req.body.botID })
+    }
+    return 0
+  },
+  serverPrivateKey: process.env.SERVER_PRIVATE_KEY,
+  ninjaConfig: {
+    dojoURL: process.env.DOJO_URL
+  }
+}))
 
 const endpoints = Object
   .getOwnPropertyNames(Object.getPrototypeOf(engine))
@@ -30,7 +53,11 @@ const endpoints = Object
 for (const endpoint of endpoints) {
   app.post(`/${endpoint}`, async (req, res) => {
     try {
-      const result = await engine[endpoint](req.body)
+      const result = await engine[endpoint]({
+        ...req.body,
+        identityKey: req.authrite.identityKey,
+        paymentAmount: req.packetpay.satoshisPaid
+      })
       res.status(200).json({
         result
       })
@@ -44,4 +71,4 @@ for (const endpoint of endpoints) {
   })
 }
 
-app.listen(PORT, () => console.log(`listening on ${PORT}`))
+http.createServer({maxHeaderSize: 32000000}, app).listen(PORT, () => console.log(`listening on ${PORT}`))
