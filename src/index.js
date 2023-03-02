@@ -3,6 +3,8 @@ const bodyparser = require('body-parser')
 require('dotenv').config()
 const StorageEngine = require('./StorageEngine')
 
+const PORT = process.env.HTTP_PORT || process.env.PORT || 4444
+
 const app = express()
 app.use(bodyparser.json())
 
@@ -42,4 +44,4 @@ for (const endpoint of endpoints) {
   })
 }
 
-app.listen(4444, () => console.log('listening on 4444'))
+app.listen(PORT, () => console.log(`listening on ${PORT}`))
