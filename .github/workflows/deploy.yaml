@@ -1,0 +1,42 @@
+name: Deployment
+on:
+  push:
+    branches:
+      - master
+
+env:
+  CURRENT_BRANCH: ${{ github.ref_name =='production' && 'production' || 'master' }}
+  GCR_HOST: us.gcr.io
+  GOOGLE_PROJECT_ID: babbage-private
+  GCR_IMAGE_NAME: botcrafter
+jobs:
+  build:
+    name: Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: RafikFarhad/push-to-gcr-github-action@v4.1
+        with:
+          gcloud_service_key: ${{ secrets.DOCKER_REGISTRY_PUSH_KEY }}
+          registry: ${{ env.GCR_HOST }}
+          project_id: ${{ env.GOOGLE_PROJECT_ID }}
+          image_name: ${{ env.GCR_IMAGE_NAME }}
+          image_tag: ${{ env.CURRENT_BRANCH }}-${{ github.sha }}
+      - name: "Create service description file"
+        run: "./scripts/mkenv.sh service.${{ env.CURRENT_BRANCH }}.yaml"
+        env:
+          IMAGE: "${{ env.GCR_HOST }}/${{ env.GOOGLE_PROJECT_ID }}/${{ env.GCR_IMAGE_NAME }}:${{ env.CURRENT_BRANCH }}-${{ github.sha }}"
+          SERVICE: ${{ env.CURRENT_BRANCH =='production' && 'prod-botcrafter-backend' || 'staging-botcrafter-backend' }}
+          NODE_ENV: production
+          KNEX_DB_CONNECTION: ${{ secrets.KNEX_DB_CONNECTION }}
+          KNEX_DB_CLIENT: mysql
+          MIGRATE_KEY: ${{ secrets.MIGRATE_KEY }}
+          SERVER_PRIVATE_KEY: ${{ secrets.SERVER_PRIVATE_KEY }}
+          HOSTING_DOMAIN: ${{ secrets.HOSTING_DOMAIN }}
+          DOJO_URL: ${{ secrets.DOJO_URL }}
+      - uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.gcp_deploy_creds }}
+      - uses: google-github-actions/deploy-cloudrun@v0
+        with:
+          metadata: "service.${{ env.CURRENT_BRANCH }}.yaml"
