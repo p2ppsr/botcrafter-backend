@@ -1,0 +1,62 @@
+exports.up = async knex => {
+  await knex.schema.createTable('users', table => {
+    table.increments('userId')
+    table.timestamps()
+    table.string('identityKey', 130)
+    table.string('name', 64)
+    table.integer('balance', 15)
+  })
+  await knex.schema.createTable('bots', table => {
+    table.increments('id')
+    table.timestamps()
+    table.string('name', 64)
+    table.string('motto', 128)
+    table.text('trainingMessages', 'longtext')
+    table.string('creatorIdentityKey', 130)
+    table.string('ownerIdentityKey', 130)
+  })
+  await knex.schema.createTable('conversations', table => {
+    table.increments('id')
+    table.timestamps()
+    table.string('ownerIdentityKey', 130)
+    table.string('title', 64)
+    table.integer('botID').unsigned().references('id').inTable('bots')
+  })
+  await knex.schema.createTable('messages', table => {
+    table.increments('messageId')
+    table.timestamps()
+    table.integer('conversationID').unsigned().references('id')
+      .inTable('conversations')
+    table.string('role', 20)
+    table.text('content', 'longtext')
+  })
+  await knex.schema.createTable('marketplace', table => {
+    table.increments('id')
+    table.timestamps()
+    table.integer('botID').unsigned().references('id').inTable('bots')
+    table.string('seller', 130)
+    table.integer('amount').unsigned()
+    table.boolean('sold')
+  })
+  await knex.schema.createTable('transactions', table => {
+    table.increments('transactionId')
+    table.timestamps()
+    table.integer('amount', 15).unsigned()
+    table.string('recipient', 130)
+    table.string('senderIdentityKey', 130)
+    table.boolean('acknowledged')
+    table.string('derivationPrefix', 30)
+    table.string('derivationSuffix', 30)
+    table.text('transaction', 'longtext')
+    table.string('paymentID', 30)
+  })
+}
+
+exports.down = async knex => {
+  await knex.schema.dropTable('transactions')
+  await knex.schema.dropTable('marketplace')
+  await knex.schema.dropTable('messages')
+  await knex.schema.dropTable('conversations')
+  await knex.schema.dropTable('bots')
+  await knex.schema.dropTable('users')
+}

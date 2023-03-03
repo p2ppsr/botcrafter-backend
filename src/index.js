@@ -2,9 +2,10 @@ const express = require('express')
 const bodyparser = require('body-parser')
 require('dotenv').config()
 const http = require('http')
-const StorageEngine = require('./StorageEngine')
+const StorageEngine = require('./KnexStorageEngine')
 const authrite = require('authrite-express')
 const PacketPay = require('@packetpay/express')
+const knex = require('knex')(require('../knexfile').production)
 
 const PORT = process.env.HTTP_PORT || process.env.PORT || 4444
 
@@ -29,7 +30,7 @@ app.use(authrite.middleware({
   baseUrl: process.env.HOSTING_DOMAIN
 }))
 
-const engine = new StorageEngine()
+const engine = new StorageEngine(knex)
 
 app.use(PacketPay({
   calculateRequestPrice: req => {

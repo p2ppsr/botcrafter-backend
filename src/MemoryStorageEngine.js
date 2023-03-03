@@ -96,7 +96,6 @@ class StorageEngine {
       title,
       id
     })
-    return id
   }
 
   listConversationsWithBot ({ identityKey, botID }) {
