@@ -33,6 +33,7 @@ jobs:
           MIGRATE_KEY: ${{ secrets.MIGRATE_KEY }}
           SERVER_PRIVATE_KEY: ${{ secrets.SERVER_PRIVATE_KEY }}
           HOSTING_DOMAIN: ${{ secrets.HOSTING_DOMAIN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           DOJO_URL: ${{ secrets.DOJO_URL }}
       - uses: google-github-actions/auth@v1
         with:

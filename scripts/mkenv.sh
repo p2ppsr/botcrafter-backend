@@ -23,6 +23,7 @@ perl -E'
     KNEX_DB_CLIENT \
     SERVER_PRIVATE_KEY \
     HOSTING_DOMAIN \
+    OPENAI_API_KEY \
     DOJO_URL >> $1
 
 echo "Built! Contents of $1:"
