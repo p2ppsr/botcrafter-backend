@@ -1,11 +1,11 @@
 const crypto = require('crypto')
-const { Configuration, OpenAIApi } = require("openai")
+const { Configuration, OpenAIApi } = require('openai')
 const Ninja = require('utxoninja')
 const { getPaymentAddress } = require('sendover')
 const bsv = require('babbage-bsv')
 
 const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY
 })
 const openai = new OpenAIApi(configuration)
 
@@ -37,7 +37,12 @@ class StorageEngine {
     if (!this.doesUserExist({ identityKey })) {
       throw new Error('Register a user account before taking this action!')
     }
-    return this.users.find(x => x.identityKey === identityKey)
+    const user = this.users.find(x => x.identityKey === identityKey)
+    const unacknowledged = this.transactions.filter(x => x.recipient === identityKey && x.acknowledged === false).reduce((a, e) => a + e.amount, 0)
+    return {
+      ...user,
+      balance: user.balance + unacknowledged
+    }
   }
 
   createBot ({
@@ -66,6 +71,7 @@ class StorageEngine {
       throw new Error('Register a user account before taking this action!')
     }
     return this.bots.filter(x => x.ownerIdentityKey === identityKey)
+      .map(x => ({ ...x, trainingMessages: undefined }))
   }
 
   doesUserOwnBot ({ identityKey, botID }) {
@@ -144,7 +150,7 @@ class StorageEngine {
     const conversationMessages = this
       .listConversationMessages({ identityKey, botID, conversationID })
     const completion = await openai.createChatCompletion({
-      model: "gpt-3.5-turbo",
+      model: 'gpt-3.5-turbo',
       messages: [
         ...bot.trainingMessages,
         ...conversationMessages.map(x => ({
@@ -247,6 +253,11 @@ class StorageEngine {
     if (!this.doesUserExist({ identityKey })) {
       throw new Error('Register a user account before taking this action!')
     }
+
+    // Unacknowledged transactions are returned if they exist
+    const foundPayment = this.transactions.find(x => x.acknowledged === false && x.recipient === identityKey)
+    if (foundPayment) return foundPayment
+
     const user = this.users.find(x => x.identityKey === identityKey)
     if (user.balance < 1000) {
       throw new Error(
@@ -254,48 +265,52 @@ class StorageEngine {
       )
     }
     // Create a derivation prefix and suffix to derive the public key
-      const derivationPrefix = require('crypto')
-        .randomBytes(10)
-        .toString('base64')
-      const derivationSuffix = require('crypto')
-        .randomBytes(10)
-        .toString('base64')
+    const derivationPrefix = require('crypto')
+      .randomBytes(10)
+      .toString('base64')
+    const derivationSuffix = require('crypto')
+      .randomBytes(10)
+      .toString('base64')
       // Derive the public key used for creating the output script
-      const derivedPublicKey = getPaymentAddress({
-        senderPrivateKey: process.env.SERVER_PRIVATE_KEY,
-        recipientPublicKey: identityKey,
-        invoiceNumber: `2-3241645161d8-${derivationPrefix} ${derivationSuffix}`,
-        returnType: 'publicKey'
-      })
+    const derivedPublicKey = getPaymentAddress({
+      senderPrivateKey: process.env.SERVER_PRIVATE_KEY,
+      recipientPublicKey: identityKey,
+      invoiceNumber: `2-3241645161d8-${derivationPrefix} ${derivationSuffix}`,
+      returnType: 'publicKey'
+    })
 
-      // Create an output script that can only be unlocked with the corresponding derived private key
-      const script = new bsv.Script(
-        bsv.Script.fromAddress(bsv.Address.fromPublicKey(
-          bsv.PublicKey.fromString(derivedPublicKey)
-        ))
-      ).toHex()
-      // Create a new output to spend
-      const outputs = [{
-        script,
-        satoshis: user.balance
-      }]
-      // Create a new transaction with Ninja which pays the output
-      const ninja = new Ninja({
-        privateKey: process.env.SERVER_PRIVATE_KEY,
-        config: {
-          dojoURL: process.env.DOJO_URL
-        }
-      })
-      const transaction = await ninja.getTransactionWithOutputs({
-        outputs,
-        note: 'Sent cash-out payment to seller.'
-      })
+    // Create an output script that can only be unlocked with the corresponding derived private key
+    const script = new bsv.Script(
+      bsv.Script.fromAddress(bsv.Address.fromPublicKey(
+        bsv.PublicKey.fromString(derivedPublicKey)
+      ))
+    ).toHex()
+    // Create a new output to spend
+    const outputs = [{
+      script,
+      satoshis: user.balance
+    }]
+    // Create a new transaction with Ninja which pays the output
+    const ninja = new Ninja({
+      privateKey: process.env.SERVER_PRIVATE_KEY,
+      config: {
+        dojoURL: process.env.DOJO_URL
+      }
+    })
+    const transaction = await ninja.getTransactionWithOutputs({
+      outputs,
+      note: 'Sent cash-out payment to seller.'
+    })
     const payment = {
-        transaction,
-        derivationPrefix,
-        derivationSuffix,
-        amount: user.balance,
-        senderIdentityKey: bsv.PrivateKey.fromHex(process.env.SERVER_PRIVATE_KEY).publicKey.toString()
+      transaction,
+      derivationPrefix,
+      derivationSuffix,
+      amount: user.balance,
+      senderIdentityKey: bsv.PrivateKey
+        .fromHex(process.env.SERVER_PRIVATE_KEY).publicKey.toString(),
+      recipient: identityKey,
+      acknowledged: false,
+      paymentID: crypto.randomBytes(12).toString('hex')
     }
     this.transactions.push(payment)
     this.users = this.users.map(x => {
@@ -305,6 +320,27 @@ class StorageEngine {
       return x
     })
     return payment
+  }
+
+  acknowledgePayment ({ identityKey, paymentID }) {
+    if (!this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
+    const payment = this.transactions
+      .find(x => x.paymentID === paymentID && x.recipient === identityKey)
+    if (!payment) {
+      throw new Error('Payment not found!')
+    }
+    if (payment.acknowledged) {
+      throw new Error('Payment already acknowledged!')
+    }
+    this.transactions = this.transactions.map(x => {
+      if (x.recipient === identityKey && x.paymentID === paymentID) {
+        x.acknowledged = true
+      }
+      return x
+    })
+    return true
   }
 }
 

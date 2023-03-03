@@ -34,7 +34,7 @@ const engine = new StorageEngine()
 app.use(PacketPay({
   calculateRequestPrice: req => {
     if (req.originalUrl === '/createBot') {
-      return 1000
+      return 25000
     } else if (req.originalUrl === '/buyBotFromMarketplace') {
       return engine.getPriceForBot({ botID: req.body.botID })
     }
@@ -71,4 +71,4 @@ for (const endpoint of endpoints) {
   })
 }
 
-http.createServer({maxHeaderSize: 32000000}, app).listen(PORT, () => console.log(`listening on ${PORT}`))
+http.createServer({ maxHeaderSize: 32000000 }, app).listen(PORT, () => console.log(`listening on ${PORT}`))
