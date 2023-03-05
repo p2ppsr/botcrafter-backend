@@ -56,12 +56,16 @@ class StorageEngine {
     if (!await this.doesUserExist({ identityKey })) {
       throw new Error('Register a user account before taking this action!')
     }
+    if (name.length > 30) {
+      throw new Error('Max character limit for bot names is 30 characters!')
+    }
     const id = await this.knex('bots').insert({
       creatorIdentityKey: identityKey,
       ownerIdentityKey: identityKey,
       name,
       motto,
-      trainingMessages: JSON.stringify(trainingMessages)
+      trainingMessages: JSON.stringify(trainingMessages),
+      deleted: false
     })
     return id[0]
   }
@@ -70,8 +74,21 @@ class StorageEngine {
     if (!await this.doesUserExist({ identityKey })) {
       throw new Error('Register a user account before taking this action!')
     }
-    return await this.knex('bots').where({ ownerIdentityKey: identityKey })
+    const bots = await this.knex('bots')
+      .where({ ownerIdentityKey: identityKey, deleted: false })
       .select('name', 'id', 'motto', 'creatorIdentityKey', 'ownerIdentityKey')
+    const result = []
+    for (const bot of bots) {
+      const [{ name: creatorName }] = await this.knex('users')
+        .where({ identityKey: bot.creatorIdentityKey })
+      const isForSale = await this.isBotOnMarketplace({ botID: bot.id })
+      result.push({
+        ...bot,
+        creatorName,
+        isForSale
+      })
+    }
+    return result
   }
 
   async doesUserOwnBot ({ identityKey, botID }) {
@@ -80,7 +97,8 @@ class StorageEngine {
     }
     const [found] = await this.knex('bots').where({
       id: botID,
-      ownerIdentityKey: identityKey
+      ownerIdentityKey: identityKey,
+      deleted: false
     })
     return !!found
   }
@@ -100,6 +118,17 @@ class StorageEngine {
     return id[0]
   }
 
+  async deleteConversation ({ identityKey, conversationID }) {
+    if (!await this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
+    await this.knex('conversations').where({
+      ownerIdentityKey: identityKey,
+      id: conversationID
+    }).update({ deleted: true })
+    return true
+  }
+
   async listConversationsWithBot ({ identityKey, botID }) {
     if (!await this.doesUserExist({ identityKey })) {
       throw new Error('Register a user account before taking this action!')
@@ -109,6 +138,7 @@ class StorageEngine {
     }
     return await this.knex('conversations').where({
       ownerIdentityKey: identityKey,
+      deleted: false,
       botID
     })
   }
@@ -136,8 +166,108 @@ class StorageEngine {
     return await this.knex('messages').where({ conversationID })
   }
 
-  async findBotById ({ id }) {
-    return await this.knex('bots').where({ id }).first()
+  async findBotById ({ id, identityKey }) {
+    const bot = await this.knex('bots').where({ id, deleted: false })
+      .select(
+        'name', 'motto', 'id', 'creatorIdentityKey', 'ownerIdentityKey'
+      ).first()
+    const [{ name: creatorName }] = await this.knex('users')
+      .where({ identityKey: bot.creatorIdentityKey })
+    bot.creatorName = creatorName
+    if (identityKey && bot.creatorIdentityKey === identityKey) {
+      const [{ trainingMessages }] = await this.knex('bots')
+        .where({ id, deleted: false }).select('trainingMessages')
+      bot.trainingMessages = JSON.parse(trainingMessages)
+      bot.editable = true
+    }
+    return bot
+  }
+
+  async killBot ({ botID, identityKey }) {
+    if (!await this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
+    if (!await this.doesUserOwnBot({ identityKey, botID })) {
+      throw new Error('You do not appear to own this bot!')
+    }
+    await this.knex('bots').where({ id: botID }).update({ deleted: true })
+    return true
+  }
+
+  async didUserCreateBot ({ identityKey, botID }) {
+    const bot = await this.knex('bots').where({ id: botID, deleted: false })
+      .select('creatorIdentityKey').first()
+    return identityKey === bot.creatorIdentityKey
+  }
+
+  async renameBot ({ botID, identityKey, newName }) {
+    if (!await this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
+    if (!await this.doesUserOwnBot({ identityKey, botID })) {
+      throw new Error('You do not appear to own this bot!')
+    }
+    if (!await this.didUserCreateBot({ botID, identityKey })) {
+      throw new Error('You can only rename bots you created!')
+    }
+    await this.knex('bots').where({ id: botID, deleted: false }).update({
+      name: newName
+    })
+    return true
+  }
+
+  async changeBotMotto ({ botID, identityKey, newMotto }) {
+    if (!await this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
+    if (!await this.doesUserOwnBot({ identityKey, botID })) {
+      throw new Error('You do not appear to own this bot!')
+    }
+    if (!await this.didUserCreateBot({ botID, identityKey })) {
+      throw new Error('You can only re-motto bots you created!')
+    }
+    await this.knex('bots').where({ id: botID, deleted: false }).update({
+      motto: newMotto
+    })
+    return true
+  }
+
+  async retrainBot ({ botID, identityKey, newTrainingMessages }) {
+    if (!await this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
+    if (!await this.doesUserOwnBot({ identityKey, botID })) {
+      throw new Error('You do not appear to own this bot!')
+    }
+    if (!await this.didUserCreateBot({ botID, identityKey })) {
+      throw new Error('You can only retrain bots you created!')
+    }
+    await this.knex('bots').where({ id: botID, deleted: false }).update({
+      trainingMessages: JSON.stringify(newTrainingMessages)
+    })
+    return true
+  }
+
+  async tryMarketplaceBot ({ identityKey, botID, messages, paymentAmount }) {
+    if (!await this.isBotOnMarketplace({ botID })) {
+      throw new Error('You can only try bots that are on the marketplace!')
+    }
+    const bot = await this.findBotById({ id: botID })
+
+    // !!! moderate this: message
+    const completion = await openai.createChatCompletion({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        ...JSON.parse(bot.trainingMessages),
+        ...messages
+      ]
+    })
+    const botResponse = completion.data.choices[0].message.content
+    const amountOwed = parseInt(paymentAmount / 2)
+    await this.knex('users').where({ identityKey: bot.seller }).update({
+      balance: this.knex.raw(`balance + ${amountOwed}`)
+    })
+    return botResponse
   }
 
   async sendMessage ({ identityKey, botID, conversationID, message }) {
@@ -152,7 +282,7 @@ class StorageEngine {
         'This bot does not appear to have access to this conversation!'
       )
     }
-    const bot = await this.findBotById({ id: botID })
+    const bot = await this.knex('bots').where({ id: botID }).first()
     const conversationMessages = await this
       .listConversationMessages({ identityKey, botID, conversationID })
 
@@ -200,6 +330,9 @@ class StorageEngine {
     if (await this.isBotOnMarketplace({ botID })) {
       throw new Error('This bot is already on the marketplace!')
     }
+    if (amount < 10000) {
+      throw new Error('Sell your bot for at least 10,000 satoshis. Give yourself some credit!')
+    }
     await this.knex('marketplace').insert({
       botID,
       amount,
@@ -211,16 +344,40 @@ class StorageEngine {
     return true
   }
 
+  async removeBotFromMarketplace ({ identityKey, botID }) {
+    if (!await this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
+    if (!await this.doesUserOwnBot({ identityKey, botID })) {
+      throw new Error('You do not appear to own this bot!')
+    }
+    if (!await this.isBotOnMarketplace({ botID })) {
+      throw new Error(
+        'This bot isn\'t listed on the marketplace, so can\'t be removed.'
+      )
+    }
+    await this.knex('marketplace').where({
+      botID,
+      seller: identityKey,
+      sold: false
+    }).del()
+    return true
+  }
+
   async listMarketplaceBots () {
     const results = []
     const search = await this.knex('marketplace').where({ sold: false })
     for (const r of search) {
       const [{ name: sellerName }] = await this.knex('users')
         .where({ identityKey: r.seller })
+      const b = await this.findBotById({ id: r.botID })
+      const [{ name: creatorName }] = await this.knex('users')
+        .where({ identityKey: b.creatorIdentityKey })
       results.push({
         ...r,
-        ...(await this.findBotById({ id: r.botID })),
+        ...b,
         sellerName,
+        creatorName,
         trainingMessages: undefined
       })
     }
@@ -228,7 +385,8 @@ class StorageEngine {
   }
 
   async getPriceForBot ({ botID }) {
-    const bot = await this.knex('marketplace').where({ botID, sold: false }).select('amount').first()
+    const bot = await this.knex('marketplace').where({ botID, sold: false })
+      .select('amount').first()
     if (!bot) {
       throw new Error(
         'The bot is not on the marketplace, or it is already sold!'
@@ -237,7 +395,12 @@ class StorageEngine {
     return bot.amount
   }
 
-  async buyBotFromMarketplace ({ identityKey, botID, paymentAmount }) {
+  async buyBotFromMarketplace ({
+    identityKey,
+    botID,
+    paymentAmount,
+    trialMessages
+  }) {
     if (!await this.doesUserExist({ identityKey })) {
       throw new Error('Register a user account before taking this action!')
     }
@@ -250,9 +413,25 @@ class StorageEngine {
         `balance + ${parseInt(paymentAmount * 0.85)}`
       )
     })
-    await this.knex('bots').where({ id: botID }).update({
+    await this.knex('bots').where({ id: botID, deleted: false }).update({
       ownerIdentityKey: identityKey
     })
+    if (trialMessages) {
+      const [newConversation] = await this.knex('conversations').insert({
+        title: 'Trial Conversation',
+        ownerIdentityKey: identityKey,
+        botID,
+        deleted: false
+      })
+      for (const msg of trialMessages) {
+        await this.knex('messages').insert({
+          conversationID: newConversation,
+          created_at: new Date(),
+          role: msg.role,
+          content: msg.content
+        })
+      }
+    }
     return botID
   }
 

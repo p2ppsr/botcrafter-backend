@@ -14,12 +14,14 @@ exports.up = async knex => {
     table.text('trainingMessages', 'longtext')
     table.string('creatorIdentityKey', 130)
     table.string('ownerIdentityKey', 130)
+    table.boolean('deleted')
   })
   await knex.schema.createTable('conversations', table => {
     table.increments('id')
     table.timestamps()
     table.string('ownerIdentityKey', 130)
     table.string('title', 64)
+    table.boolean('deleted')
     table.integer('botID').unsigned().references('id').inTable('bots')
   })
   await knex.schema.createTable('messages', table => {

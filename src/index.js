@@ -38,6 +38,8 @@ app.use(PacketPay({
       return 25000
     } else if (req.originalUrl === '/buyBotFromMarketplace') {
       return engine.getPriceForBot({ botID: req.body.botID })
+    } else if (req.originalUrl === '/tryMarketplaceBot') {
+      return JSON.stringify(req.body.messages).length * 20
     }
     return 0
   },
