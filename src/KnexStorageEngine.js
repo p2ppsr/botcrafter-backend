@@ -136,11 +136,22 @@ class StorageEngine {
     if (!await this.doesUserOwnBot({ identityKey, botID })) {
       throw new Error('You do not appear to own this bot!')
     }
-    return await this.knex('conversations').where({
+    const search = await this.knex('conversations').where({
       ownerIdentityKey: identityKey,
       deleted: false,
       botID
     })
+    for (const c of search) {
+      const latestMessage = await this.knex('messages').where({
+        conversationID: c.id
+      }).orderBy('created_at', 'desc').select('content').first()
+      if (latestMessage) {
+        c.lastMessage = latestMessage.content
+      } else {
+        c.lastMessage = 'No messages yet...'
+      }
+    }
+    return search
   }
 
   async canBotAccessConversation ({ conversationID, botID }) {
