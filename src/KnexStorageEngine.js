@@ -135,7 +135,7 @@ class StorageEngine {
     }).update({ title: newName })
     return true
   }
-  
+
   async deleteConversation ({ identityKey, conversationID }) {
     if (!await this.doesUserExist({ identityKey })) {
       throw new Error('Register a user account before taking this action!')
@@ -199,7 +199,7 @@ class StorageEngine {
     const bot = await this.knex('bots').where({ id, deleted: false })
       .select(
         'name', 'motto', 'id', 'creatorIdentityKey', 'ownerIdentityKey'
-    ).first()
+      ).first()
     if (!bot) {
       throw new Error('Bot not found!')
     }
