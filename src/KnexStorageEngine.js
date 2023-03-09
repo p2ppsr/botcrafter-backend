@@ -82,6 +82,12 @@ class StorageEngine {
       const [{ name: creatorName }] = await this.knex('users')
         .where({ identityKey: bot.creatorIdentityKey })
       const isForSale = await this.isBotOnMarketplace({ botID: bot.id })
+      if (bot.creatorIdentityKey === identityKey) {
+        const [{ trainingMessages }] = await this.knex('bots')
+          .where({ id: bot.id, deleted: false }).select('trainingMessages')
+        bot.trainingMessages = JSON.parse(trainingMessages)
+        bot.editable = true
+      }
       result.push({
         ...bot,
         creatorName,
@@ -113,11 +119,23 @@ class StorageEngine {
     const id = await this.knex('conversations').insert({
       ownerIdentityKey: identityKey,
       botID,
-      title
+      title,
+      deleted: false
     })
     return id[0]
   }
 
+  async renameConversation ({ identityKey, conversationID, newName }) {
+    if (!await this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
+    await this.knex('conversations').where({
+      ownerIdentityKey: identityKey,
+      id: conversationID
+    }).update({ title: newName })
+    return true
+  }
+  
   async deleteConversation ({ identityKey, conversationID }) {
     if (!await this.doesUserExist({ identityKey })) {
       throw new Error('Register a user account before taking this action!')
@@ -181,10 +199,14 @@ class StorageEngine {
     const bot = await this.knex('bots').where({ id, deleted: false })
       .select(
         'name', 'motto', 'id', 'creatorIdentityKey', 'ownerIdentityKey'
-      ).first()
+    ).first()
+    if (!bot) {
+      throw new Error('Bot not found!')
+    }
     const [{ name: creatorName }] = await this.knex('users')
       .where({ identityKey: bot.creatorIdentityKey })
     bot.creatorName = creatorName
+    bot.isForSale = await this.isBotOnMarketplace({ botID: bot.id })
     if (identityKey && bot.creatorIdentityKey === identityKey) {
       const [{ trainingMessages }] = await this.knex('bots')
         .where({ id, deleted: false }).select('trainingMessages')
@@ -379,9 +401,14 @@ class StorageEngine {
     const results = []
     const search = await this.knex('marketplace').where({ sold: false })
     for (const r of search) {
+      let b
+      try {
+        b = await this.findBotById({ id: r.botID })
+      } catch (e) {
+        continue
+      }
       const [{ name: sellerName }] = await this.knex('users')
         .where({ identityKey: r.seller })
-      const b = await this.findBotById({ id: r.botID })
       const [{ name: creatorName }] = await this.knex('users')
         .where({ identityKey: b.creatorIdentityKey })
       results.push({
