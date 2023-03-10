@@ -175,7 +175,8 @@ class StorageEngine {
   async canBotAccessConversation ({ conversationID, botID }) {
     const [found] = await this.knex('conversations').where({
       botID,
-      id: conversationID
+      id: conversationID,
+      deleted: false
     })
     return !!found
   }
@@ -285,7 +286,16 @@ class StorageEngine {
     if (!await this.isBotOnMarketplace({ botID })) {
       throw new Error('You can only try bots that are on the marketplace!')
     }
-    const bot = await this.findBotById({ id: botID })
+    if (!await this.isBotOnMarketplace({ botID })) {
+      await this.knex('users').where({ identityKey }).update({
+        balance: this.knex.raw(`balance + ${paymentAmount - 50}`)
+      })
+      throw new Error('This bot doesn\'t appear to be on the marketplace! Did someone just buy it? Your payment has been refunded to your balance.')
+    }
+    const marketplace = await this.knex('marketplace')
+      .where({ botID, sold: false }).first()
+    const bot = await this.knex('bots')
+      .where({ id: botID, deleted: false }).first()
 
     // !!! moderate this: message
     const completion = await openai.createChatCompletion({
@@ -296,10 +306,13 @@ class StorageEngine {
       ]
     })
     const botResponse = completion.data.choices[0].message.content
-    const amountOwed = parseInt(paymentAmount / 2)
-    await this.knex('users').where({ identityKey: bot.seller }).update({
-      balance: this.knex.raw(`balance + ${amountOwed}`)
+    await this.knex('users').where({ identityKey: marketplace.seller }).update({
+      balance: this.knex.raw(`balance + ${parseInt(paymentAmount * 0.5)}`)
     })
+    await this.knex('users').where({ identityKey: bot.creatorIdentityKey })
+      .update({
+        balance: this.knex.raw(`balance + ${parseInt(paymentAmount * 0.05)}`)
+      })
     return botResponse
   }
 
@@ -442,15 +455,30 @@ class StorageEngine {
     if (!await this.doesUserExist({ identityKey })) {
       throw new Error('Register a user account before taking this action!')
     }
-    const [{ seller }] = await this.knex('marketplace')
+    let [seller] = await this.knex('marketplace')
       .where({ botID, sold: false }).select('seller')
+    if (!seller) {
+      await this.knex('users').where({ identityKey }).update({
+        balance: this.knex.raw(`balance + ${paymentAmount - 50}`)
+      })
+      throw new Error('Could not find this bot on the marketplace! Did someone already buy it? Your payment has been refunded.')
+    }
+    seller = seller.seller
     await this.knex('marketplace').where({ botID, sold: false })
       .update({ sold: true, updated_at: new Date() })
+    const [bot] = await this.knex('bots').where({ id: botID, deleted: false })
+      .select('creatorIdentityKey')
     await this.knex('users').where({ identityKey: seller }).update({
       balance: this.knex.raw(
-        `balance + ${parseInt(paymentAmount * 0.85)}`
+        `balance + ${parseInt(paymentAmount * 0.8)}`
       )
     })
+    await this.knex('users').where({ identityKey: bot.creatorIdentityKey })
+      .update({
+        balance: this.knex.raw(
+          `balance + ${parseInt(paymentAmount * 0.05)}`
+        )
+      })
     await this.knex('bots').where({ id: botID, deleted: false }).update({
       ownerIdentityKey: identityKey
     })
