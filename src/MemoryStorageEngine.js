@@ -4,6 +4,20 @@ const Ninja = require('utxoninja')
 const { getPaymentAddress } = require('sendover')
 const bsv = require('babbage-bsv')
 
+/*
+
+
+
+PLEASE NOTE:
+
+
+This file is outdated, and the Memory Storage Engine will not work as a drop-in replacement for the Knex Storage Engine. It would need to be updated with the functionality of the Knex Storage Engine before it could be used again.
+
+
+
+
+*/
+
 const configuration = new Configuration({
   apiKey: process.env.OPENAI_API_KEY
 })
