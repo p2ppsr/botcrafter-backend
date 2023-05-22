@@ -35,13 +35,13 @@ const engine = new StorageEngine(knex)
 app.use(PacketPay({
   calculateRequestPrice: req => {
     if (req.originalUrl === '/createBot') {
-      return 25000
+      return 200000
     } else if (req.originalUrl === '/buyBotFromMarketplace') {
       return engine.getPriceForBot({ botID: req.body.botID })
     } else if (req.originalUrl === '/tryMarketplaceBot') {
       return JSON.stringify(req.body.messages).length * 20
     } else if (req.originalUrl === '/retrainBot') {
-      return 15000
+      return 150000
     }
     return 0
   },
