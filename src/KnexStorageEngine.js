@@ -287,6 +287,7 @@ class StorageEngine {
       throw new Error('You can only try bots that are on the marketplace!')
     }
     if (!await this.isBotOnMarketplace({ botID })) {
+      // This code is unlikely to ever do anything given the identical condition above...
       await this.knex('users').where({ identityKey }).update({
         balance: this.knex.raw(`balance + ${paymentAmount - 50}`)
       })
@@ -366,6 +367,34 @@ class StorageEngine {
     return !!found
   }
 
+  moderators = [
+//     '02e5e1a150745253aff65cdbcef722873110d89c396223e3d8715f018e72f7d4f8', // T
+     '037bc8c85587136e80634d8c06d9f29942c097a80195a344ab9d25c8db19e2f197', // Bob
+     '03c9490ce9dd299c796f6c4d24ad3a977c96e1458a89f8d7fbd80a292dde9eaef9', // Mike
+     '0238ff27623e15caeae025a7a73e8dc29474e5fb14127e0996ce1658981a2f877e', // Gabriel
+  ]
+
+  async isModerator ({ identityKey }) {
+    return this.moderators.indexOf(identityKey) > -1
+  }
+
+  async setNsfw ({ identityKey, botID }) {
+    if (!await this.doesUserExist({ identityKey })) {
+      throw new Error('Register a user account before taking this action!')
+    }
+    // Check that identityKey is an enabled moderator...
+    if (this.moderators.indexOf(identityKey) > -1) {
+      const bot = await this.knex('bots').where({ id: botID })
+        .select('id', 'creatorIdentityKey', 'ownerIdentityKey').first()
+      if (bot) {
+        await this.knex('users').where({ identityKey: bot.ownerIdentityKey }).update({
+          nsfw: true
+        })
+      }
+    }
+    return true
+  }
+
   async listBotOnMarketplace ({ identityKey, botID, amount }) {
     if (!await this.doesUserExist({ identityKey })) {
       throw new Error('Register a user account before taking this action!')
@@ -420,8 +449,10 @@ class StorageEngine {
       } catch (e) {
         continue
       }
-      const [{ name: sellerName }] = await this.knex('users')
+      const [{ name: sellerName, nsfw }] = await this.knex('users')
         .where({ identityKey: r.seller })
+      // If seller has been flagged as not-safe-for-work... skip their bots
+      if (nsfw) continue
       const [{ name: creatorName }] = await this.knex('users')
         .where({ identityKey: b.creatorIdentityKey })
       results.push({
