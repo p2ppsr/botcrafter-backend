@@ -41,7 +41,7 @@ app.use(PacketPay({
     } else if (req.originalUrl === '/tryMarketplaceBot') {
       return JSON.stringify(req.body.messages).length * 20
     } else if (req.originalUrl === '/retrainBot') {
-      return 150000
+      return 15000
     }
     return 0
   },
