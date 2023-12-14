@@ -1,6 +1,6 @@
 const crypto = require('crypto')
 const { Configuration, OpenAIApi } = require('openai')
-const Ninja = require('utxoninja')
+const Ninja = require('ninja-base')
 const { getPaymentAddress } = require('sendover')
 const bsv = require('babbage-bsv')
 
