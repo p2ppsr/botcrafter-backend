@@ -12,15 +12,15 @@
   "license": "ISC",
   "dependencies": {
     "@packetpay/express": "^0.1.4",
-    "authrite-express": "^0.3.4",
-    "babbage-bsv": "^0.1.1",
+    "authrite-express": "^0.3.13",
+    "babbage-bsv": "^0.2.4",
     "body-parser": "^1.20.2",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "knex": "^2.4.2",
     "mysql": "^2.18.1",
     "openai": "^3.2.1",
-    "sendover": "^1.1.5",
+    "sendover": "^1.1.21",
     "utxoninja": "^0.2.49"
   },
   "devDependencies": {
