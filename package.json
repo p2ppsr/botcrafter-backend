@@ -11,17 +11,17 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@packetpay/express": "^0.2.16",
-    "authrite-express": "^0.4.16",
+    "@packetpay/express": "^0.2.17",
+    "authrite-express": "^0.4.17",
     "babbage-bsv": "^0.2.4",
     "body-parser": "^1.20.2",
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "knex": "^2.4.2",
     "mysql": "^2.18.1",
-    "ninja-base": "^0.3.23",
+    "ninja-base": "^0.3.24",
     "openai": "^3.2.1",
-    "sendover": "^1.3.16"
+    "sendover": "^1.3.17"
   },
   "devDependencies": {
     "nodemon": "^2.0.21",
