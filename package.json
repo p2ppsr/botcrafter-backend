@@ -11,8 +11,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@packetpay/express": "^0.2.21",
-    "authrite-express": "^0.4.20",
+    "@packetpay/express": "^0.2.22",
+    "authrite-express": "^0.4.21",
     "babbage-bsv": "^0.2.4",
     "body-parser": "^1.20.2",
     "dotenv": "^16.0.3",
