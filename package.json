@@ -11,7 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@packetpay/express": "^0.2.32",
+    "@packetpay/express": "^0.2.33",
     "authrite-express": "^0.4.32",
     "babbage-bsv": "^0.2.5",
     "body-parser": "^1.20.2",
@@ -19,7 +19,7 @@
     "express": "^4.18.2",
     "knex": "^2.4.2",
     "mysql": "^2.18.1",
-    "ninja-base": "^0.3.42",
+    "ninja-base": "^0.3.43",
     "openai": "^3.2.1",
     "sendover": "^1.3.26"
   },
