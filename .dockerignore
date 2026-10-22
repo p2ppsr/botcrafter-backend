@@ -1,0 +1,5 @@
+node_modules
+.git
+.env
+.env.*
+*.functions.env.yaml
